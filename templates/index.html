@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traffic-Net ML Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #1e3a8a 100%);
+        }
+        .card {
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .status-online { background-color: #10b981; }
+        .status-offline { background-color: #ef4444; }
+        .status-training { background-color: #f59e0b; }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-white">
+    <div class="container mx-auto p-6 max-w-7xl">
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-200 to-cyan-200 bg-clip-text text-transparent">
+                Traffic-Net ML Pipeline
+            </h1>
+            <p class="text-blue-200">Real-time Traffic Image Classification System</p>
+        </header>
+
+        <!-- Model Status Card -->
+        <div class="card rounded-lg p-6 mb-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div id="statusIndicator" class="w-4 h-4 rounded-full status-offline animate-pulse"></div>
+                    <div>
+                        <h3 class="text-lg font-semibold">Model Status: <span id="statusText">Loading...</span></h3>
+                        <p class="text-sm text-blue-200">Uptime: <span id="uptime">0h 0m 0s</span></p>
+                    </div>
+                </div>
+                <div class="flex gap-6">
+                    <div class="text-center">
+                        <p class="text-2xl font-bold text-green-400" id="totalPredictions">0</p>
+                        <p class="text-xs text-blue-200">Predictions</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-2xl font-bold text-blue-400" id="avgInferenceTime">0</p>
+                        <p class="text-xs text-blue-200">Avg Time (ms)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="flex gap-2 mb-6">
+            <button onclick="showTab('predict')" id="tab-predict" class="px-6 py-3 rounded-lg bg-blue-600 font-semibold transition">
+                🎯 Predict
+            </button>
+            <button onclick="showTab('visualize')" id="tab-visualize" class="px-6 py-3 rounded-lg card font-semibold transition hover:bg-blue-600">
+                📊 Visualizations
+            </button>
+            <button onclick="showTab('retrain')" id="tab-retrain" class="px-6 py-3 rounded-lg card font-semibold transition hover:bg-blue-600">
+                🔄 Retrain Model
+            </button>
+        </div>
+
+        <!-- Content Sections -->
+        <div id="content-predict" class="content-section">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Upload Section -->
+                <div class="card rounded-lg p-6">
+                    <h2 class="text-2xl font-bold mb-4">Single Image Prediction</h2>
+                    <div class="mb-4">
+                        <label class="block mb-2 text-sm font-medium">Upload Image</label>
+                        <input type="file" id="imageUpload" accept="image/*" class="block w-full text-sm text-gray-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer">
+                    </div>
+                    <button onclick="predictImage()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition">
+                        Predict
+                    </button>
+                    
+                    <!-- Image Preview -->
+                    <div id="imagePreview" class="mt-4 hidden">
+                        <img id="previewImg" class="w-full rounded-lg" alt="Preview">
+                    </div>
+                </div>
+
+                <!-- Results Section -->
+                <div class="card rounded-lg p-6">
+                    <h2 class="text-2xl font-bold mb-4">Prediction Results</h2>
+                    <div id="predictionResults" class="space-y-4">
+                        <p class="text-gray-300">Upload an image to see predictions</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="content-visualize" class="content-section hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Dataset Distribution -->
+                <div class="card rounded-lg p-6">
+                    <h2 class="text-2xl font-bold mb-4">Dataset Distribution</h2>
+                    <canvas id="datasetChart"></canvas>
+                </div>
+
+                <!-- Model Performance -->
+                <div class="card rounded-lg p-6">
+                    <h2 class="text-2xl font-bold mb-4">Model Performance</h2>
+                    <canvas id="performanceChart"></canvas>
+                </div>
+
+                <!-- Prediction Distribution -->
+                <div class="card rounded-lg p-6 lg:col-span-2">
+                    <h2 class="text-2xl font-bold mb-4">Prediction Class Distribution</h2>
+                    <canvas id="predictionChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div id="content-retrain" class="content-section hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Upload Training Data -->
+                <div class="card rounded-lg p-6">
+                    <h2 class="text-2xl font-bold mb-4">Upload Training Data</h2>
+                    <div class="mb-4">
+                        <label class="block mb-2 text-sm font-medium">Class Label</label>
+                        <select id="classLabel" class="w-full p-3 rounded-lg bg-blue-900 text-white border border-blue-700">
+                            <option value="Sparse Traffic">Sparse Traffic</option>
+                            <option value="Dense Traffic">Dense Traffic</option>
+                            <option value="Accident">Accident</option>
+                            <option value="Fire">Fire</option>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block mb-2 text-sm font-medium">Upload Images (Multiple)</label>
+                        <input type="file" id="bulkUpload" accept="image/*" multiple class="block w-full text-sm text-gray-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer">
+                    </div>
+                    <button onclick="uploadForRetraining()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg transition">
+                        Upload Data
+                    </button>
+                    <div id="uploadStatus" class="mt-4"></div>
+                </div>
+
+                <!-- Trigger Retraining -->
+                <div class="card rounded-lg p-6">
+                    <h2 class="text-2xl font-bold mb-4">Retrain Model</h2>
+                    <div class="mb-4">
+                        <label class="block mb-2 text-sm font-medium">Epochs</label>
+                        <input type="number" id="epochs" value="30" min="5" max="100" class="w-full p-3 rounded-lg bg-blue-900 text-white border border-blue-700">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block mb-2 text-sm font-medium">Learning Rate</label>
+                        <input type="number" id="learningRate" value="0.0001" step="0.00001" class="w-full p-3 rounded-lg bg-blue-900 text-white border border-blue-700">
+                    </div>
+                    <button onclick="triggerRetraining()" id="retrainBtn" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-4 rounded-lg transition">
+                        🔄 Start Retraining
+                    </button>
+                    <div id="retrainStatus" class="mt-4"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let charts = {};
+        const API_BASE = 'http://localhost:5000';
+
+        // Tab switching
+        function showTab(tabName) {
+            document.querySelectorAll('.content-section').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`content-${tabName}`).classList.remove('hidden');
+            
+            document.querySelectorAll('[id^="tab-"]').forEach(btn => {
+                btn.classList.remove('bg-blue-600');
+                btn.classList.add('card');
+            });
+            document.getElementById(`tab-${tabName}`).classList.add('bg-blue-600');
+            document.getElementById(`tab-${tabName}`).classList.remove('card');
+
+            if (tabName === 'visualize') {
+                loadVisualizations();
+            }
+        }
+
+        // Update status
+        async function updateStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/api/status`);
+                const data = await response.json();
+                
+                const indicator = document.getElementById('statusIndicator');
+                const statusText = document.getElementById('statusText');
+                
+                indicator.className = `w-4 h-4 rounded-full animate-pulse status-${data.status}`;
+                statusText.textContent = data.status.toUpperCase();
+                
+                if (data.uptime_seconds) {
+                    const hours = Math.floor(data.uptime_seconds / 3600);
+                    const minutes = Math.floor((data.uptime_seconds % 3600) / 60);
+                    const seconds = data.uptime_seconds % 60;
+                    document.getElementById('uptime').textContent = `${hours}h ${minutes}m ${seconds}s`;
+                }
+                
+                document.getElementById('totalPredictions').textContent = data.total_predictions || 0;
+                
+                if (data.prediction_stats) {
+                    document.getElementById('avgInferenceTime').textContent = 
+                        data.prediction_stats.avg_inference_time_ms || 0;
+                }
+            } catch (error) {
+                console.error('Error updating status:', error);
+            }
+        }
+
+        // Predict image
+        async function predictImage() {
+            const fileInput = document.getElementById('imageUpload');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select an image');
+                return;
+            }
+
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('previewImg').src = e.target.result;
+                document.getElementById('imagePreview').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+
+            // Make prediction
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const resultsDiv = document.getElementById('predictionResults');
+            resultsDiv.innerHTML = '<p class="text-gray-300">Predicting...</p>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/predict`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.error) {
+                    resultsDiv.innerHTML = `<p class="text-red-400">Error: ${result.error}</p>`;
+                    return;
+                }
+
+                // Display results
+                let html = `
+                    <div class="bg-blue-900 rounded-lg p-4 mb-4">
+                        <h3 class="text-xl font-bold text-green-400 mb-2">🎯 ${result.predicted_class}</h3>
+                        <p class="text-lg">Confidence: <span class="font-bold">${(result.confidence * 100).toFixed(2)}%</span></p>
+                        <p class="text-sm text-gray-300">Inference Time: ${result.inference_time_ms}ms</p>
+                    </div>
+                    <div class="bg-blue-900 rounded-lg p-4">
+                        <h4 class="font-semibold mb-2">All Probabilities:</h4>
+                `;
+
+                for (const [className, prob] of Object.entries(result.all_probabilities)) {
+                    const percentage = (prob * 100).toFixed(2);
+                    html += `
+                        <div class="mb-2">
+                            <div class="flex justify-between text-sm mb-1">
+                                <span>${className}</span>
+                                <span>${percentage}%</span>
+                            </div>
+                            <div class="w-full bg-gray-700 rounded-full h-2">
+                                <div class="bg-blue-500 h-2 rounded-full" style="width: ${percentage}%"></div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                html += '</div>';
+                resultsDiv.innerHTML = html;
+
+                updateStatus();
+            } catch (error) {
+                resultsDiv.innerHTML = `<p class="text-red-400">Error: ${error.message}</p>`;
+            }
+        }
+
+        // Upload for retraining
+        async function uploadForRetraining() {
+            const fileInput = document.getElementById('bulkUpload');
+            const classLabel = document.getElementById('classLabel').value;
+            const files = fileInput.files;
+
+            if (files.length === 0) {
+                alert('Please select images');
+                return;
+            }
+
+            const formData = new FormData();
+            for (let file of files) {
+                formData.append('files', file);
+            }
+            formData.append('class_label', classLabel);
+
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.innerHTML = '<p class="text-blue-300">Uploading...</p>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/upload/retrain`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                statusDiv.innerHTML = `
+                    <div class="bg-green-900 rounded-lg p-3 mt-2">
+                        <p class="text-green-300">✓ ${result.message}</p>
+                        <p class="text-sm text-gray-300">Files saved: ${result.files_saved}</p>
+                    </div>
+                `;
+
+                fileInput.value = '';
+            } catch (error) {
+                statusDiv.innerHTML = `<p class="text-red-400">Error: ${error.message}</p>`;
+            }
+        }
+
+        // Trigger retraining
+        async function triggerRetraining() {
+            const epochs = document.getElementById('epochs').value;
+            const learningRate = document.getElementById('learningRate').value;
+            const btn = document.getElementById('retrainBtn');
+            const statusDiv = document.getElementById('retrainStatus');
+
+            if (confirm(`Start retraining with ${epochs} epochs?`)) {
+                btn.disabled = true;
+                btn.textContent = '⏳ Training...';
+                statusDiv.innerHTML = '<p class="text-blue-300">Retraining started. This may take several minutes...</p>';
+
+                try {
+                    const response = await fetch(`${API_BASE}/api/retrain`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ epochs: parseInt(epochs), learning_rate: parseFloat(learningRate) })
+                    });
+
+                    const result = await response.json();
+                    statusDiv.innerHTML = `
+                        <div class="bg-green-900 rounded-lg p-3 mt-2">
+                            <p class="text-green-300">✓ ${result.message}</p>
+                            <p class="text-sm text-gray-300">Check console for progress</p>
+                        </div>
+                    `;
+                } catch (error) {
+                    statusDiv.innerHTML = `<p class="text-red-400">Error: ${error.message}</p>`;
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = '🔄 Start Retraining';
+                }
+            }
+        }
+
+        // Load visualizations
+        async function loadVisualizations() {
+            try {
+                const response = await fetch(`${API_BASE}/api/visualizations/data`);
+                const data = await response.json();
+
+                // Dataset distribution chart
+                if (data.train_stats && data.train_stats.class_distribution) {
+                    createChart('datasetChart', {
+                        type: 'bar',
+                        data: {
+                            labels: Object.keys(data.train_stats.class_distribution),
+                            datasets: [{
+                                label: 'Training Images',
+                                data: Object.values(data.train_stats.class_distribution),
+                                backgroundColor: ['#3b82f6', '#ef4444', '#f59e0b', '#10b981']
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: { legend: { labels: { color: 'white' } } },
+                            scales: {
+                                y: { ticks: { color: 'white' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+                                x: { ticks: { color: 'white' }, grid: { color: 'rgba(255,255,255,0.1)' } }
+                            }
+                        }
+                    });
+                }
+
+                // Load metrics
+                const metricsResponse = await fetch(`${API_BASE}/api/metrics`);
+                if (metricsResponse.ok) {
+                    const metrics = await metricsResponse.json();
+                    if (metrics.metrics) {
+                        createChart('performanceChart', {
+                            type: 'radar',
+                            data: {
+                                labels: ['Accuracy', 'Precision', 'Recall', 'F1 Score', 'AUC'],
+                                datasets: [{
+                                    label: 'Model Performance',
+                                    data: [
+                                        metrics.metrics.test_accuracy,
+                                        metrics.metrics.test_precision,
+                                        metrics.metrics.test_recall,
+                                        metrics.metrics.test_f1_score,
+                                        metrics.metrics.test_auc
+                                    ],
+                                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                                    borderColor: '#3b82f6',
+                                    pointBackgroundColor: '#3b82f6'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                plugins: { legend: { labels: { color: 'white' } } },
+                                scales: {
+                                    r: {
+                                        ticks: { color: 'white', backdropColor: 'transparent' },
+                                        grid: { color: 'rgba(255,255,255,0.1)' },
+                                        pointLabels: { color: 'white' },
+                                        max: 1
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+
+                // Prediction distribution
+                if (data.prediction_stats && data.prediction_stats.class_distribution) {
+                    createChart('predictionChart', {
+                        type: 'doughnut',
+                        data: {
+                            labels: Object.keys(data.prediction_stats.class_distribution),
+                            datasets: [{
+                                data: Object.values(data.prediction_stats.class_distribution),
+                                backgroundColor: ['#3b82f6', '#ef4444', '#f59e0b', '#10b981']
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: { legend: { labels: { color: 'white' } } }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading visualizations:', error);
+            }
+        }
+
+        function createChart(canvasId, config) {
+            const ctx = document.getElementById(canvasId);
+            if (charts[canvasId]) {
+                charts[canvasId].destroy();
+            }
+            charts[canvasId] = new Chart(ctx, config);
+        }
+
+        // Initialize
+        updateStatus();
+        setInterval(updateStatus, 5000);
+    </script>
+</body>
+</html>
