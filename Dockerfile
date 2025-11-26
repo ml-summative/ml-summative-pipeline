@@ -28,7 +28,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p data/train data/test data/retrain models uploads logs
+RUN mkdir -p data/train data/test data/retrain uploads logs
 
 # Expose port
 EXPOSE 5000
