@@ -53,7 +53,7 @@ def allowed_file(filename):
     """Check if file extension is allowed"""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
-           
+
 def ensure_model_from_url(target_path='models/traffic_net_model.h5'):
     model_path = Path(target_path)
     model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -154,17 +154,35 @@ def predict():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
-        # Make prediction
+        # Timing: start request handling
+        req_start = time.time()
+
+        # Make prediction (measure separately)
+        pred_start = time.time()
         result = predictor.predict(filepath)
-        
+        pred_end = time.time()
+
         # Update status
         model_status['total_predictions'] += 1
         model_status['last_prediction_time'] = datetime.now().isoformat()
-        
+
         # Add file info to result
         result['filename'] = filename
         result['file_path'] = filepath
-        
+
+        # Record timings (ms)
+        req_end = time.time()
+        timings = {
+            'request_total_ms': round((req_end - req_start) * 1000, 2),
+            'predict_ms': round((pred_end - pred_start) * 1000, 2),
+            'overhead_ms': round(((req_end - req_start) - (pred_end - pred_start)) * 1000, 2)
+        }
+        if isinstance(result, dict):
+            result['timings'] = timings
+
+        # Log timing info
+        print(f"[TIMING] /api/predict - total={timings['request_total_ms']}ms predict={timings['predict_ms']}ms overhead={timings['overhead_ms']}ms")
+
         return jsonify(result)
     
     except Exception as e:
@@ -283,6 +301,24 @@ def trigger_retraining():
             
             # Load existing model
             model_handler = TrafficNetModel(model_path=MODEL_PATH)
+
+            # Ensure model output size matches training data classes
+            try:
+                train_classes = len(train_gen.class_indices) if hasattr(train_gen, 'class_indices') else None
+            except Exception:
+                train_classes = None
+
+            if train_classes and train_classes != model_handler.num_classes:
+                print(f"Warning: training data has {train_classes} classes but model expects {model_handler.num_classes}. Rebuilding model to match training classes...")
+                # Rebuild model with correct number of classes and try to load weights by name
+                model_handler.num_classes = train_classes
+                new_model = model_handler.create_model()
+                try:
+                    new_model.load_weights(MODEL_PATH, by_name=True)
+                    print("Loaded existing weights into rebuilt model (by_name).")
+                except Exception as e:
+                    print(f"Could not load weights into rebuilt model: {e}")
+                model_handler.model = new_model
             
             # Retrain
             history = model_handler.retrain(
@@ -380,11 +416,15 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
+    # Use the PORT env var (Render sets PORT) or fall back to 5000
+    port = int(os.environ.get('PORT') or os.environ.get('RENDER_EXTERNAL_PORT') or 5000)
     print("\n" + "="*60)
     print("Traffic-Net API Server")
     print("="*60)
     print(f"Model Status: {model_status['status']}")
-    print(f"Server starting on http://0.0.0.0:5000")
+    print(f"Server starting on http://0.0.0.0:{port}")
     print("="*60 + "\n")
-    
-    app.run(host='0.0.0.0', port=5000, debug=True)
+
+    # NOTE: In production (Render) prefer running with a WSGI server such as Gunicorn or Waitress.
+    # For quick local/debug runs we still allow starting the Flask app, but disable debug mode.
+    app.run(host='0.0.0.0', port=port, debug=False)
