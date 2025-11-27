@@ -1,7 +1,7 @@
 {
     "model_name": "Traffic-Net Classifier",
     "version": "1.0",
-    "created_at": "2025-11-25T10:08:40.205760",
+    "created_at": "2025-11-26T10:34:06.476763",
     "architecture": "MobileNetV2 + Custom Layers",
     "input_shape": [
         224,
@@ -15,13 +15,14 @@
         "accident",
         "fire"
     ],
+    "weights_file": "models/traffic_net_weights.h5",
     "metrics": {
-        "test_accuracy": 0.9212499856948853,
-        "test_precision": 0.9266750812530518,
-        "test_recall": 0.9162499904632568,
-        "test_f1_score": 0.9214330494401649,
-        "test_auc": 0.9877430200576782,
-        "test_loss": 0.570192277431488
+        "test_accuracy": 0.8987500071525574,
+        "test_precision": 0.9067688584327698,
+        "test_recall": 0.887499988079071,
+        "test_f1_score": 0.8970309578902286,
+        "test_auc": 0.9855054616928101,
+        "test_loss": 0.612201452255249
     },
     "training_samples": 3600,
     "test_samples": 800
