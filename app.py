@@ -385,6 +385,28 @@ def get_visualization_data():
         'prediction_stats': pred_stats
     })
 
+
+@app.route('/api/admin/dataset_dirs', methods=['GET'])
+def admin_dataset_dirs():
+    """Admin/debug endpoint: list data/ subdirectories and image counts"""
+    base = Path('data')
+    if not base.exists():
+        return jsonify({'error': 'data directory not found', 'path': str(base)}), 404
+
+    entries = []
+    for p in sorted(base.iterdir()):
+        if p.is_dir():
+            imgs = list(p.glob('*.jpg')) + list(p.glob('*.png')) + list(p.glob('*.jpeg'))
+            entries.append({'name': p.name, 'image_count': len(imgs)})
+
+    # Also include what the preprocessor reports for convenience
+    try:
+        stats = preprocessor.get_dataset_statistics('data')
+    except Exception as e:
+        stats = {'error': str(e)}
+
+    return jsonify({'data_path': str(base), 'dirs': entries, 'preprocessor_stats': stats})
+
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     """Serve uploaded files"""

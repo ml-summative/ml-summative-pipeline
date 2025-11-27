@@ -56,10 +56,10 @@
         <!-- Navigation Tabs -->
         <div class="flex gap-2 mb-6">
             <button onclick="showTab('predict')" id="tab-predict" class="px-6 py-3 rounded-lg bg-blue-600 font-semibold transition">
-                🎯 Predict
+                Predict
             </button>
             <button onclick="showTab('visualize')" id="tab-visualize" class="px-6 py-3 rounded-lg card font-semibold transition hover:bg-blue-600">
-                📊 Visualizations
+                Visualizations
             </button>
             <button onclick="showTab('retrain')" id="tab-retrain" class="px-6 py-3 rounded-lg card font-semibold transition hover:bg-blue-600">
                 🔄 Retrain Model
@@ -113,7 +113,10 @@
                 <!-- Prediction Distribution -->
                 <div class="card rounded-lg p-6 lg:col-span-2">
                     <h2 class="text-2xl font-bold mb-4">Prediction Class Distribution</h2>
-                    <canvas id="predictionChart"></canvas>
+                    <!-- Constrain donut size so it doesn't fill the whole card -->
+                    <div style="max-width:380px; height:320px; margin:0 auto;">
+                        <canvas id="predictionChart" style="width:100%;height:100%;display:block;"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
@@ -165,8 +168,21 @@
     <script>
         // Global variables
         let charts = {};
-        const API_BASE = 'http://localhost:5001';
-        // const API_BASE = 'http://traffic-net-ml:5000';
+        // Determine API base dynamically: use localhost dev port when developing locally,
+        // otherwise use the same origin the page was served from (works on Render/production).
+        const API_BASE = (function(){
+            try {
+                const hostname = window.location.hostname;
+                if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                    // Local dev server uses port 10000 in this project setup
+                    return 'http://localhost:5000';
+                }
+            } catch (e) {
+                // Fallback to origin if any error
+            }
+            return window.location.origin;
+        })();
+        // const API_BASE = 'http://localhost:5000';
 
         // Tab switching
         function showTab(tabName) {
@@ -445,7 +461,9 @@
                         },
                         options: {
                             responsive: true,
-                            plugins: { legend: { labels: { color: 'white' } } }
+                            maintainAspectRatio: false, // allow sizing by container
+                            plugins: { legend: { labels: { color: 'white' } } },
+                            layout: { padding: 10 }
                         }
                     });
                 }

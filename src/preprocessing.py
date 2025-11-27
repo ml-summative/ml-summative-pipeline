@@ -19,6 +19,7 @@ class ImagePreprocessor:
     
     def __init__(self, img_size=(224, 224)):
         self.img_size = img_size
+        # Use human-friendly labels here; directory names are inferred from these
         self.class_names = ['Sparse Traffic', 'Dense Traffic', 'Accident', 'Fire']
         
     def preprocess_single_image(self, image_path):
@@ -189,7 +190,9 @@ class ImagePreprocessor:
             try:
                 # Determine save path
                 if class_name:
-                    class_dir = save_dir / class_name
+                    # Normalize class directory names to lowercase with underscores
+                    dir_name = class_name.lower().replace(' ', '_')
+                    class_dir = save_dir / dir_name
                 else:
                     class_dir = save_dir / 'unlabeled'
                 
@@ -256,6 +259,15 @@ class ImagePreprocessor:
             Dictionary with dataset statistics
         """
         data_dir = Path(data_dir)
+
+        # If the requested path doesn't exist, fall back to project-level `data/`
+        if not data_dir.exists():
+            fallback = Path('data')
+            if fallback.exists():
+                data_dir = fallback
+            else:
+                # Nothing to report
+                return stats
         stats = {
             'total_images': 0,
             'class_distribution': {},
@@ -264,21 +276,42 @@ class ImagePreprocessor:
         }
         
         for class_name in self.class_names:
-            class_path = data_dir / class_name
+            # Prefer underscored lowercase directory names (e.g., 'sparse_traffic')
+            dir_name = class_name.lower().replace(' ', '_')
+            class_path = data_dir / dir_name
+
+            # Fallback: some datasets may use human-friendly names as directories
+            if not class_path.exists():
+                class_path = data_dir / class_name
+            # If not found at top-level, search recursively for matching folders
+            found_dirs = []
             if class_path.exists():
-                images = list(class_path.glob('*.jpg')) + list(class_path.glob('*.png'))
-                count = len(images)
-                stats['class_distribution'][class_name] = count
-                stats['total_images'] += count
-                
-                # Sample some images for size analysis
-                for img_path in images[:10]:
+                found_dirs.append(class_path)
+            else:
+                # Search for any directory matching the normalized or human name
+                target_names = {dir_name, class_name.lower()}
+                for p in data_dir.rglob('*'):
+                    if p.is_dir() and p.name.lower() in target_names:
+                        found_dirs.append(p)
+
+            # Aggregate counts across all matching directories (handles train/test subfolders)
+            total_count = 0
+            sampled_sizes = []
+            for d in found_dirs:
+                imgs = list(d.glob('*.jpg')) + list(d.glob('*.png')) + list(d.glob('*.jpeg'))
+                total_count += len(imgs)
+                for img_path in imgs[:10]:
                     try:
                         img = cv2.imread(str(img_path))
                         if img is not None:
-                            stats['image_sizes'].append(img.shape[:2])
+                            sampled_sizes.append(img.shape[:2])
                     except:
                         continue
+
+            if total_count > 0:
+                stats['class_distribution'][class_name] = total_count
+                stats['total_images'] += total_count
+                stats['image_sizes'].extend(sampled_sizes)
         
         if stats['image_sizes']:
             avg_h = np.mean([s[0] for s in stats['image_sizes']])
@@ -293,7 +326,7 @@ class DataPipeline:
     Complete data pipeline for managing training data
     """
     
-    def __init__(self, base_dir='data'):
+    def __init__(self, base_dir='../data'):
         self.base_dir = Path(base_dir)
         self.train_dir = self.base_dir / 'train'
         self.test_dir = self.base_dir / 'test'
@@ -337,14 +370,21 @@ class DataPipeline:
         """
         Merge retraining data with existing training data
         """
-        # Move images from retrain_dir to train_dir
+        # Move images from retrain_dir to train_dir using normalized directory names
         for class_name in self.preprocessor.class_names:
-            retrain_class_dir = self.retrain_dir / class_name
-            train_class_dir = self.train_dir / class_name
-            
+            dir_name = class_name.lower().replace(' ', '_')
+            retrain_class_dir = self.retrain_dir / dir_name
+            train_class_dir = self.train_dir / dir_name
+
+            # Also support legacy folders that used the human-friendly label
+            if not retrain_class_dir.exists():
+                retrain_class_dir = self.retrain_dir / class_name
+            if not train_class_dir.exists():
+                train_class_dir = self.train_dir / class_name
+
             if retrain_class_dir.exists():
                 train_class_dir.mkdir(parents=True, exist_ok=True)
-                
+
                 for img_path in retrain_class_dir.glob('*'):
                     if img_path.is_file():
                         # Move to training directory
