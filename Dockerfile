@@ -30,7 +30,7 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p data/train data/test data/retrain uploads logs
 
-# Expose default port (can be overridden by Render via PORT env var)
+# Expose port
 EXPOSE 5000
 
 # Environment variables
@@ -42,6 +42,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:5000/health')"
 
 # Run the application
-# Use Gunicorn in the container and bind to the PORT env var (Render provides PORT at runtime).
-# Use shell form so environment variable expansion works.
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} app:app --workers 4 --threads 2"]
+CMD ["python", "app.py"]
