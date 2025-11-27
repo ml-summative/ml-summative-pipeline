@@ -187,6 +187,30 @@ class TrafficNetModel:
         """
         if self.model is None:
             raise ValueError("No model loaded. Create or load a model first.")
+
+        # If the training generator has a different number of classes, rebuild model
+        try:
+            train_classes = len(train_generator.class_indices) if hasattr(train_generator, 'class_indices') else None
+        except Exception:
+            train_classes = None
+
+        if train_classes and train_classes != self.num_classes:
+            print(f"Retrain: detected {train_classes} classes from generator but model expects {self.num_classes}. Rebuilding model...")
+            self.num_classes = train_classes
+            new_model = self.create_model()
+            # Try to load existing weights by name
+            candidates = [self.model_dir / 'traffic_net_model.h5', self.model_dir / 'best_model.h5', self.model_dir / 'traffic_net_model.keras', self.model_dir / 'traffic_net_weights.h5']
+            for cand in candidates:
+                try:
+                    if cand.exists():
+                        print(f"Attempting to load weights from {cand} into rebuilt model (by_name)")
+                        new_model.load_weights(cand, by_name=True)
+                        print(f"Weights loaded from {cand} (by_name)")
+                        break
+                except Exception as e:
+                    print(f"Failed to load weights from {cand}: {e}")
+
+            self.model = new_model
         
         print("=" * 60)
         print("RETRAINING MODEL")
@@ -312,16 +336,83 @@ class TrafficNetModel:
         
         if not filepath.exists():
             raise FileNotFoundError(f"Model file not found: {filepath}")
+
+        print(f"Loading model from {filepath}...")
+        try:
+            # Try to load the model normally (avoid compile to reduce incompatibilities)
+            self.model = keras.models.load_model(filepath, compile=False)
+            print(f"Model loaded from {filepath} (standard load)")
+
+            # Try to infer number of classes from model output shape
+            try:
+                out_shape = self.model.output_shape
+                if isinstance(out_shape, (list, tuple)) and len(out_shape) >= 1:
+                    self.num_classes = int(out_shape[-1])
+                    print(f"Inferred num_classes={self.num_classes} from model output shape")
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"Standard model load failed: {e}")
+            print("Attempting fallback: reconstruct architecture and load weights...")
+
+            # Reconstruct architecture
+            try:
+                model = self.create_model()
+
+                # Candidate weight files
+                candidates = [filepath]
+                parent = filepath.parent
+                for name in ['traffic_net_model.h5', 'best_model.h5', 'traffic_net_model.keras', 'traffic_net_weights.h5']:
+                    p = parent / name
+                    if p.exists() and p not in candidates:
+                        candidates.append(p)
+
+                loaded = False
+                last_err = None
+                for cand in candidates:
+                    try:
+                        print(f"Trying to load weights from {cand}...")
+                        model.load_weights(cand)
+                        self.model = model
+                        loaded = True
+                        print(f"Weights loaded from {cand}")
+                        break
+                    except Exception as le:
+                        last_err = le
+                        try:
+                            model.load_weights(cand, by_name=True)
+                            self.model = model
+                            loaded = True
+                            print(f"Weights loaded (by_name) from {cand}")
+                            break
+                        except Exception as le2:
+                            last_err = le2
+                            print(f"Failed to load weights from {cand}: {le2}")
+
+                if not loaded:
+                    raise RuntimeError(f"Fallback weight loading failed. Last error: {last_err}")
+
+            except Exception as e2:
+                print(f"Fallback reconstruction failed: {e2}")
+                # Re-raise original exception for visibility
+                raise e
         
-        self.model = keras.models.load_model(filepath)
-        print(f"Model loaded from {filepath}")
-        
-        # Try to load metadata
+        # Try to load metadata (also update num_classes/class_names if present)
         metadata_path = filepath.parent / 'model_metadata.json'
         if metadata_path.exists():
-            with open(metadata_path, 'r') as f:
-                metadata = json.load(f)
-            print(f"Metadata loaded: {metadata.get('version', 'Unknown version')}")
+            try:
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                print(f"Metadata loaded: {metadata.get('version', 'Unknown version')}")
+                if 'num_classes' in metadata:
+                    try:
+                        self.num_classes = int(metadata['num_classes'])
+                    except Exception:
+                        pass
+                if 'class_names' in metadata and isinstance(metadata['class_names'], (list, tuple)):
+                    self.class_names = metadata['class_names']
+            except Exception:
+                pass
     
     def _get_default_callbacks(self, prefix=''):
         """
