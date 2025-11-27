@@ -7,6 +7,7 @@ from flask import Flask, request, jsonify, render_template, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
+import requests
 from pathlib import Path
 import json
 from datetime import datetime
@@ -52,6 +53,35 @@ def allowed_file(filename):
     """Check if file extension is allowed"""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+def ensure_model_from_url(target_path='models/traffic_net_model.h5'):
+    model_path = Path(target_path)
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    if model_path.exists() and model_path.stat().st_size > 1000:
+        # already present and non-empty
+        return True
+
+    url = os.environ.get('MODEL_URL')
+    if not url:
+        print("No MODEL_URL set; skipping model download.")
+        return False
+
+    headers = {}
+    token = os.environ.get('MODEL_AUTH_TOKEN')
+    if token:
+        headers['Authorization'] = f'Bearer {token}'
+
+    print(f"Downloading model from {url} ...")
+    with requests.get(url, stream=True, headers=headers, timeout=300) as r:
+        r.raise_for_status()
+        with open(model_path, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+    print(f"Model saved to {model_path}")
+    return True
+
+ensure_model_from_url()
 
 def initialize_model():
     """Initialize the prediction service"""
