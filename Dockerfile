@@ -6,14 +6,6 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # Install system dependencies
-# RUN apt-get update && apt-get install -y \
-#     libglib2.0-0 \
-#     libsm6 \
-#     libxext6 \
-#     libxrender-dev \
-#     libgomp1 \
-#     libgl1-mesa-glx \
-#     && rm -rf /var/lib/apt/lists/*
 RUN apt-get update && apt-get install -y libgl1 libglib2.0-0
 
 # Copy requirements
@@ -43,4 +35,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 # Run the application
 # CMD ["python", "app.py"]
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} app:app --workers 4 --threads 2"]
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} app:app --workers 1 --threads 1"]
