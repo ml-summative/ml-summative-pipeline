@@ -165,7 +165,20 @@
     <script>
         // Global variables
         let charts = {};
-        const API_BASE = 'http://localhost:10000';
+        // Determine API base dynamically: use localhost dev port when developing locally,
+        // otherwise use the same origin the page was served from (works on Render/production).
+        const API_BASE = (function(){
+            try {
+                const hostname = window.location.hostname;
+                if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                    // Local dev server uses port 10000 in this project setup
+                    return 'http://localhost:10000';
+                }
+            } catch (e) {
+                // Fallback to origin if any error
+            }
+            return window.location.origin;
+        })();
         // const API_BASE = 'http://traffic-net-ml:5000';
 
         // Tab switching
