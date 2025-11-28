@@ -4,7 +4,7 @@ A comprehensive end-to-end machine learning pipeline for traffic image classific
 
 ## Demo Video
 
-**YouTube Link:** 
+**YouTube Link:** https://youtu.be/mBJBvWZmU9c
 
 ## Live Demo
 
